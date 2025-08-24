@@ -4,22 +4,22 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from geopy.geocoders import Nominatim
-from geopy.extra.rate_limiter import RateLimiter
-import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.graph_objects as go
-import numpy as np
-import folium
-from folium.plugins import MarkerCluster
-from streamlit_folium import st_folium
-from urllib.parse import quote
+# from geopy.geocoders import Nominatim
+# from geopy.extra.rate_limiter import RateLimiter
+# import matplotlib.pyplot as plt
+# import plotly.express as px
+# import plotly.graph_objects as go
+# import numpy as np
+# import folium
+# from folium.plugins import MarkerCluster
+# from streamlit_folium import st_folium
+# from urllib.parse import quote
 
 
 st.title("Análisis Inmoviliario")
 
 ## Lecturas de data
-path = Path(rf"C:\Users\PC\Desktop\Proyectos\Proyectos_Py\6.Analisis_Alquiler_Venta\vivienda\data\data_alquiler_venta.csv")
+path = Path(rf"C:\Users\PC\Desktop\Proyectos\Proyectos_Py\6.Analisis_Alquiler_Venta\vivienda\vivienda\data_alquiler_venta.csv")
 data = pd.read_csv(path, sep="|")
 
 ## Variables
