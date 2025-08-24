@@ -20,16 +20,9 @@ st.title("Análisis Inmoviliario")
 
 ## Lecturas de data
 # path = Path(rf"C:\Users\PC\Desktop\Proyectos\Proyectos_Py\6.Analisis_Alquiler_Venta\vivienda\data\data_alquiler_venta.csv")
-# data = pd.read_csv(path, sep="|")
-
-
-# BASE_DIR = Path(__file__).parent  # carpeta raíz del repo
-# DATA_DIR = BASE_DIR / "data"
-# path = DATA_DIR / "inmuebles.csv"
 path = "./data/data_alquiler_venta.csv"
 
 data = pd.read_csv(path, sep="|", encoding="utf-8")
-
 
 ## Variables
 distritos = data["distrito_oficial"].unique()
@@ -97,6 +90,7 @@ with tab1:
     # height=None, 
     # )   
     
+    st.subheader(f"Lista de Propiedad en {input_inmueble} en {input_operacion}")
     styled_df = data_agrupada_df_fmt.sort_values("n", ascending=False).style.set_table_styles(
         [
             {"selector": "th", "props": [("font-size", "12px"), ("text-align", "center")]},
@@ -109,11 +103,92 @@ with tab1:
     
     st.dataframe(styled_df, use_container_width=True, height=600)
     
-
+## Pestaña de Alquiler
 with tab2:
-    st.subheader("Vista de alquiler (sin sidebar)")
-    # tu lógica de alquiler
+    
+    st.subheader("Vista de Alquiler", divider="blue")
+    
+    c1, c2 = st.columns([2, 2], gap="small")
+    with c1:
+        st.markdown("**Inmueble**")
+        input_inmueble = st.selectbox(
+            "Inmueble", inmueble, key="f_inm",
+            label_visibility="collapsed"
+        )
+    with c2:
+        st.markdown("**Distrito**")
+        input_distrito = st.selectbox(
+            "Distrito", distritos, key="f_inm",
+            label_visibility="collapsed"
+        )
+    
+    ## Filtrado de Alquiler
+    df_filtrado_aquiler = data[
+        (data["inmueble"] == input_inmueble) &
+        (data["distrito_oficial"] == input_distrito) &
+        (data["operacion"] == "alquiler")
+    ].copy()
+    
+    
+    st.subheader("KPIs de precios Alquiler (S/.)")
+    # Asegura numérico
+    df_filtrado_aquiler["precio_pen"] = pd.to_numeric(df_filtrado_aquiler["precio_pen"], errors="coerce")
+    df_kpi = df_filtrado_aquiler.dropna(subset=["precio_pen"])
+    # Formato helper
+    fmt = lambda x: f"S/. {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric("Total propiedades", len(df_kpi))
+    with c2: st.metric("Mínimo", fmt(df_kpi["precio_pen"].min()))
+    with c3: st.metric("Máximo", fmt(df_kpi["precio_pen"].max()))
+    c4, c5 = st.columns(2)
+    with c4: st.metric("Promedio", fmt(df_kpi["precio_pen"].mean()))
+    with c5: st.metric("Mediana", fmt(df_kpi["precio_pen"].median()))
+    
+    
+    st.subheader(f"Lista de Propiedad en Alquiler en {input_distrito}")
+    
+    
 
+## Pestaña de Venta
 with tab3:
-    st.subheader("Vista de venta (sin sidebar)")
-    # tu lógica de venta
+    
+    st.subheader("Vista de Venta", divider="blue")
+    
+    c1, c2 = st.columns([2, 2], gap="small")
+    with c1:
+        st.markdown("**Inmueble**")
+        input_inmueble = st.selectbox(
+            "Inmueble", inmueble, key="f_inm",
+            label_visibility="collapsed"
+        )
+    with c2:
+        st.markdown("**Distrito**")
+        input_distrito = st.selectbox(
+            "Distrito", distritos, key="f_inm",
+            label_visibility="collapsed"
+        )
+    
+    ## Filtrado de Alquiler
+    df_filtrado_venta = data[
+        (data["inmueble"] == input_inmueble) &
+        (data["distrito_oficial"] == input_distrito) &
+        (data["operacion"] == "venta")
+    ].copy()
+    
+    
+    st.subheader("KPIs de precios Alquiler (S/.)")
+    # Asegura numérico
+    df_filtrado_venta["precio_usd"] = pd.to_numeric(df_filtrado_venta["precio_usd"], errors="coerce")
+    df_kpi = df_filtrado_venta.dropna(subset=["precio_usd"])
+    # Formato helper
+    fmt = lambda x: f"$. {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric("Total propiedades", len(df_kpi))
+    with c2: st.metric("Mínimo", fmt(df_kpi["precio_usd"].min()))
+    with c3: st.metric("Máximo", fmt(df_kpi["precio_usd"].max()))
+    c4, c5 = st.columns(2)
+    with c4: st.metric("Promedio", fmt(df_kpi["precio_usd"].mean()))
+    with c5: st.metric("Mediana", fmt(df_kpi["precio_usd"].median()))
+    
+    
+    st.subheader(f"Lista de Propiedad en Venta en {input_distrito}")
