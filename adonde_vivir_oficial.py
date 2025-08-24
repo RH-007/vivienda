@@ -19,8 +19,16 @@ from pathlib import Path
 st.title("Análisis Inmoviliario")
 
 ## Lecturas de data
-path = Path(rf"C:\Users\PC\Desktop\Proyectos\Proyectos_Py\6.Analisis_Alquiler_Venta\vivienda\vivienda\data_alquiler_venta.csv")
-data = pd.read_csv(path, sep="|")
+# path = Path(rf"C:\Users\PC\Desktop\Proyectos\Proyectos_Py\6.Analisis_Alquiler_Venta\vivienda\data\data_alquiler_venta.csv")
+# data = pd.read_csv(path, sep="|")
+
+
+BASE_DIR = Path(__file__).parent  # carpeta raíz del repo
+DATA_DIR = BASE_DIR / "data"
+path = DATA_DIR / "inmuebles.csv"
+
+data = pd.read_csv(path, sep="|", encoding="utf-8")
+
 
 ## Variables
 distritos = data["distrito_oficial"].unique()
