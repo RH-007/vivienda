@@ -26,7 +26,7 @@ st.title("Análisis Inmoviliario")
 # BASE_DIR = Path(__file__).parent  # carpeta raíz del repo
 # DATA_DIR = BASE_DIR / "data"
 # path = DATA_DIR / "inmuebles.csv"
-path = "./data/data_alquiler_venta.png"
+path = "./data/data_alquiler_venta.csv"
 
 data = pd.read_csv(path, sep="|", encoding="utf-8")
 
