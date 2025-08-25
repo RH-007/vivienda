@@ -1,4 +1,6 @@
 
+## Proyecto a Donde Vivir
+## ==========================
 
 ## Liberias
 import streamlit as st
@@ -9,19 +11,20 @@ import streamlit as st
 import folium
 from folium.plugins import MarkerCluster, MiniMap, Fullscreen, MeasureControl, LocateControl
 from urllib.parse import quote
-# from geopy.geocoders import Nominatim
-# from geopy.extra.rate_limiter import RateLimiter
-# import matplotlib.pyplot as plt
-# import plotly.express as px
-# import plotly.graph_objects as go
-# import numpy as np
-# import folium
-# from folium.plugins import MarkerCluster
-# from streamlit_folium import st_folium
-# from urllib.parse import quote
 
 
+
+## Titulo
 st.title("Análisis Inmoviliario")
+st.set_page_config(layout="wide")
+
+"""
+- La información mostrada son los departamentos, casas y terrenos en venta y alquiler en Lima.
+
+#### **¿Qué estamos mostrando?**
+- Una sencilla aplicación que pregunta al usuario cuál es su color favorito. Comportamiento de la aplicación
+
+"""
 
 ## Lecturas de data
 # path = Path(rf"C:\Users\PC\Desktop\Proyectos\Proyectos_Py\6.Analisis_Alquiler_Venta\vivienda\data\data_alquiler_venta.csv")
@@ -34,8 +37,6 @@ distritos = data["distrito_oficial"].unique()
 inmueble = data["inmueble"].unique()
 operacion = data["operacion"].unique()
 
-
-
 # --------- PESTAÑAS ----------
 # tab1, tab2, tab3 = st.tabs(["🔎 Análisis", "📦 Alquiler", "📊 Venta"])
 # st.sidebar.header('Filtros Analisis')
@@ -44,12 +45,10 @@ operacion = data["operacion"].unique()
 # input_operacion = st.sidebar.selectbox('Seleccione una operación', operacion)
 
     
-tab1, tab2, tab3 = st.tabs(["🔎 Análisis", "📦 Alquiler", "📊 Venta"])
+tab1, tab2, tab3 = st.tabs(["🔎 Análisis General", "📦 Alquiler", "📊 Venta"])
 
 with tab1:
 
-    # ---- Sidebar falso sólo en esta pestaña ----
-    # ---- Filtros en una sola línea ----
     c1, c2 = st.columns([2, 2], gap="small")
     with c1:
         st.markdown("**Inmueble**")
@@ -87,15 +86,8 @@ with tab1:
     data_agrupada_df_fmt = data_agrupada_df.copy()
     data_agrupada_df_fmt[cols_precios] = data_agrupada_df_fmt[cols_precios]\
         .applymap(lambda x: f"{simbolo} {x:,.0f}")
-
-    # st.table(data_agrupada_df_fmt.sort_values("n", ascending=False))
-    # st.dataframe(
-    # data_agrupada_df_fmt.sort_values("n", ascending=False),
-    # use_container_width=True, 
-    # height=None, 
-    # )   
     
-    st.subheader(f"Lista de Propiedad en {input_inmueble} en {input_operacion}")
+    st.subheader(f"Lista de {input_inmueble} en {input_operacion}")
     styled_df = data_agrupada_df_fmt.sort_values("n", ascending=False).style.set_table_styles(
         [
             {"selector": "th", "props": [("font-size", "12px"), ("text-align", "center")]},
@@ -108,6 +100,7 @@ with tab1:
     
     st.dataframe(styled_df, use_container_width=True, height=600)
     
+    
 ## Pestaña de Alquiler
 with tab2:
     
@@ -117,13 +110,13 @@ with tab2:
     with c1:
         st.markdown("**Inmueble**")
         input_inmueble = st.selectbox(
-            "Inmueble", inmueble, key="alquiler_inmueble" ,      # <- clave única
+            "Inmueble", inmueble, key="alquiler_inmueble" ,
             label_visibility="collapsed"
         )
     with c2:
         st.markdown("**Distrito**")
         input_distrito = st.selectbox(
-            "Distrito", distritos, key="alquiler_distrito" ,    # <- clave única
+            "Distrito", distritos, key="alquiler_distrito" ,
             label_visibility="collapsed"
         )
     
@@ -153,25 +146,27 @@ with tab2:
     st.subheader(f"Lista de {input_inmueble} en Alquiler en {input_distrito}", divider="blue")
     
     
-    data_aquiler = df_filtrado_aquiler[["fuente", "direccion", "precio", "caracteristica", "enlace", "precio_pen", "precio_usd", "area", "distrito_oficial", "dormitorio", "baños"]].copy()
+    data_aquiler = df_filtrado_aquiler[["fuente", "direccion", "precio", "caracteristica", "enlace", "precio_pen", "precio_usd", "area", "distrito_oficial", "dormitorio", "estacionamientos"]].copy()
     
     # st.dataframe(data_aquiler)
     st.data_editor(
-        data_aquiler[["fuente", "direccion", "precio_pen", "caracteristica", "enlace"]],
+        data_aquiler[["fuente", "direccion", "precio_pen", "area", "dormitorio", "estacionamientos", "caracteristica", "enlace"]].sort_values("precio_pen", ascending=True),
         hide_index=True,
         use_container_width=True,
         column_config={
             "fuente": st.column_config.TextColumn("Fuente", disabled=True),
             "direccion": st.column_config.TextColumn("Dirección", disabled=True),
             "precio_pen": st.column_config.NumberColumn("Precio (S/.)", format="S/. %d", disabled=True),
+            "area": st.column_config.NumberColumn("Area (m²)", format="%d m²", disabled=True),
             "caracteristicas": st.column_config.NumberColumn("Caracteristicas", disabled=True),
             "enlace": st.column_config.LinkColumn("Abrir", display_text="Abrir anuncio", validate=r"^https?://.*$"),
         },
-        disabled=["fuente", "direccion", "precio_pen", "caracteristica"],
+        disabled=["direccion", "precio_pen", "area", "caracteristica", "caracteristica"],
         key="tabla_con_link_alquiler",
     )
     
-
+    
+    ## Mapa de ALquiler por Distirto
     st.subheader(f"Mapa de {input_inmueble} en Alquiler en {input_distrito}", divider="blue")
     
     
@@ -298,21 +293,21 @@ with tab3:
     
     st.subheader(f"Lista de {input_inmueble} en Alquiler en {input_distrito}", divider="blue")
     
-    data_venta = df_filtrado_aquiler[["fuente", "direccion", "precio", "caracteristica", "enlace", "precio_pen", "precio_usd", "area", "distrito_oficial", "dormitorio", "baños"]].copy()
+    data_venta = df_filtrado_venta[["fuente", "direccion", "precio", "caracteristica", "enlace", "precio_pen", "precio_usd", "area", "distrito_oficial", "dormitorio", "baños"]].copy()
     
     # st.dataframe(data_aquiler)
     st.data_editor(
-        data_venta[["fuente", "direccion", "precio_pen", "caracteristica", "enlace"]],
+        data_venta[["fuente", "direccion", "precio_usd", "caracteristica", "enlace"]].sort_values("precio_usd", ascending=True),
         hide_index=True,
         use_container_width=True,
         column_config={
             "fuente": st.column_config.TextColumn("Fuente", disabled=True),
             "direccion": st.column_config.TextColumn("Dirección", disabled=True),
-            "precio_pen": st.column_config.NumberColumn("Precio (S/.)", format="S/. %d", disabled=True),
+            "precio_usd": st.column_config.NumberColumn("Precio $.", format="$ %d", disabled=True),
             "caracteristicas": st.column_config.NumberColumn("Caracteristicas", disabled=True),
             "enlace": st.column_config.LinkColumn("Abrir", display_text="Abrir anuncio", validate=r"^https?://.*$"),
         },
-        disabled=["fuente", "direccion", "precio_pen", "caracteristica"],
+        disabled=["fuente", "direccion", "precio_usd", "caracteristica"],
         key="tabla_con_link_venta",
     )
     
