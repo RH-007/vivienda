@@ -8,7 +8,6 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from streamlit_folium import st_folium
-import streamlit as st
 import folium
 from folium.plugins import MarkerCluster, MiniMap, Fullscreen, MeasureControl, LocateControl
 from urllib.parse import quote
@@ -41,10 +40,28 @@ En pocas palabras: una herramienta diseñada para ayudarte a entender **cómo se
 ## Lecturas de data  ##
 ## ==================##
 
-# Ruta
-path = "./data/data_alquiler_venta.csv"
+@st.cache_data # Decorador mágico de Streamlit
+def load_data(path):
+    """
+    Carga los datos desde un archivo CSV.
+    Gracias a @st.cache_data, esta función solo se ejecutará una vez
+    y el resultado (el DataFrame) se guardará en memoria caché.
+    Las siguientes veces que se necesiten los datos, se leerán directamente
+    de la caché, haciendo la app mucho más rápida.
+    """
+    df = pd.read_csv(path, sep="|", encoding="utf-8")
+    
+    # OPTIMIZACIÓN OPCIONAL: Convertir columnas a tipos más eficientes
+    # Esto reduce el uso de memoria y acelera los cálculos.
+    # df['distrito_oficial'] = df['distrito_oficial'].astype('category')
+    # df['inmueble'] = df['inmueble'].astype('category')
+    # df['operacion'] = df['operacion'].astype('category')
+    # df['area'] = pd.to_numeric(df['area'], errors='coerce', downcast='integer')
+    
+    return df
 
-data = pd.read_csv(path, sep="|", encoding="utf-8")
+# Cargamos los datos usando nuestra función cacheada
+data = load_data("./data/data_alquiler_venta.csv")
 
 ## Variables
 distritos = data["distrito_oficial"].unique()
@@ -360,7 +377,7 @@ with tab3:
     ## TABLA Detalle de Venta por Distrito ##
     ## ====================================##
     
-    st.subheader(f"Lista de {input_inmueble} en Alquiler en {input_distrito}", divider="blue")
+    st.subheader(f"Lista de {input_inmueble} en Venta en {input_distrito}", divider="blue")
     
     e1, e2 = st.columns([2, 2], gap="small")
     with e1:
