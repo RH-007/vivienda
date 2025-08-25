@@ -69,6 +69,137 @@ inmueble = data["inmueble"].unique()
 operacion = data["operacion"].unique()
 
 ## ==================##
+##    Funciones      ##
+## ==================##
+
+def create_map(df: pd.DataFrame):
+    """Genera y muestra un mapa de Folium con las propiedades de un DataFrame."""
+    
+    # Filtra propiedades con geolocalización válida.
+    status_validos = {'geo', 'ok', 'geocoded', 'found'}
+    
+    # .loc con una máscara booleana devuelve una copia. Se añade .copy() para ser explícitos.
+    gdf = df.loc[
+        df['status'].astype(str).str.lower().isin(status_validos) &
+        df['lat'].notna() &
+        df['lon'].notna()
+    ].copy()
+    
+    if gdf.empty:
+        st.info("No hay propiedades con geolocalización válida para graficar.")
+        return
+
+    # Centro del mapa
+    center_lat, center_lon = gdf['lat'].mean(), gdf['lon'].mean()
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles='OpenStreetMap')
+
+    # Controles útiles
+    LocateControl().add_to(m)
+
+    # Cluster de marcadores
+    cluster = MarkerCluster(name="Propiedades").add_to(m)
+
+    # Construye popup/tooltip seguros
+    def safe(x): 
+        return "" if pd.isna(x) else str(x)
+
+    for _, r in gdf.iterrows():
+        gmaps_q = quote(f"{r.get('direccion', '')}, Lima, Perú")
+        popup_html = f"""
+        <b>Dirección:</b> {safe(r.get('direccion_fix') or r.get('direccion'))}<br>
+        <b>Caracteristicas:</b> {r.get('caracteristica','-')}<br>
+        <b>Precio PEN:</b> {f"S/ {r.get('precio_pen'):,.0f}" if pd.notna(r.get('precio_pen')) else '-'}<br/>
+        <b>Precio USD:</b> {f"US$ {r.get('precio_usd'):,.0f}" if pd.notna(r.get('precio_usd')) else '-'}<br/>
+        <b>Enlace:</b> <a href="{r['enlace']}" target="_blank">Abrir en {r.get('fuente','-')}</a><br>
+        <a href="https://www.google.com/maps/search/?api=1&query={gmaps_q}" target="_blank">Abrir en Google Maps</a>
+        """
+        
+        color = 'blue' if r.get('operacion') == 'alquiler' else 'green'
+
+        folium.CircleMarker(
+            location=[r['lat'], r['lon']],
+            radius=5,
+            color=color,
+            fill=True,
+            fill_opacity=0.8,
+            tooltip=safe(r.get('direccion_fix') or r.get('direccion')),
+            popup=folium.Popup(popup_html, max_width=350),
+        ).add_to(cluster)
+
+    st_folium(m, height=600, use_container_width=True)
+
+def display_kpis(df: pd.DataFrame, operation: str, distrito: str, inmueble: str):
+    """Calcula y muestra los KPIs de precios para una operación específica."""
+    
+    if operation == "alquiler":
+        price_col = "precio_pen"
+        symbol = "S/"
+        title = f"KPIs de precios Alquiler ({symbol}) en {distrito}"
+    else:  # venta
+        price_col = "precio_usd"
+        symbol = "$"
+        title = f"KPIs de precios Venta ({symbol}) en {distrito}"
+
+    st.subheader(title, divider="blue")
+    
+    df_kpi = df.copy()
+    df_kpi[price_col] = pd.to_numeric(df_kpi[price_col], errors="coerce")
+    df_kpi.dropna(subset=[price_col], inplace=True)
+
+    if df_kpi.empty:
+        st.info("No hay datos de precios para mostrar KPIs.")
+        return
+
+    fmt = lambda x: f"{symbol} {x:,.0f}"
+    
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric(f"Total {inmueble}", len(df_kpi), border=True)
+    with c2: st.metric("Mínimo", fmt(df_kpi[price_col].min()), border=True)
+    with c3: st.metric("Máximo", fmt(df_kpi[price_col].max()), border=True)
+    
+    c4, c5 = st.columns(2)
+    with c4: st.metric("Promedio", fmt(df_kpi[price_col].mean()), border=True)
+    with c5: st.metric("Mediana", fmt(df_kpi[price_col].median()), border=True)
+
+def display_details_table(df: pd.DataFrame, operation: str):
+    """Muestra la tabla de detalles de propiedades para una operación específica."""
+    
+    df_display = df.copy()
+
+    # Configuración base común para ambas operaciones
+    config = {
+        "fuente": st.column_config.TextColumn("Fuente", disabled=True),
+        "direccion": st.column_config.TextColumn("Dirección", disabled=True),
+        "area": st.column_config.NumberColumn("Área", format="%d m²", width="small", disabled=True),
+        "dormitorio": st.column_config.NumberColumn("Dorm.", width="small", disabled=True),
+        "baños": st.column_config.NumberColumn("Baños", width="small", disabled=True),
+        "estacionamientos": st.column_config.NumberColumn("Estac.", width="small", disabled=True),
+        "caracteristica": st.column_config.TextColumn("Características", disabled=True),
+        "enlace": st.column_config.LinkColumn("Anuncio", display_text="🔗 Abrir", validate=r"^https?://.*$"),
+    }
+
+    if operation == "alquiler":
+        price_col = "precio_pen"
+        cols_to_show = ["fuente", "direccion", "precio_pen", "area", "dormitorio", "baños", "estacionamientos", "mantenimiento", "caracteristica", "enlace"]
+        config.update({
+            "precio_pen": st.column_config.NumberColumn("Precio (S/.)", format="S/. %d", disabled=True),
+            "mantenimiento": st.column_config.NumberColumn("Mant. (S/.)", format="S/. %d", disabled=True),
+        })
+    else:  # venta
+        price_col = "precio_usd"
+        cols_to_show = ["fuente", "direccion", "precio_usd", "area", "dormitorio", "baños", "estacionamientos", "caracteristica", "enlace"]
+        config.update({
+            "precio_usd": st.column_config.NumberColumn("Precio ($)", format="$ %d", disabled=True),
+        })
+
+    existing_cols = [col for col in cols_to_show if col in df_display.columns]
+    
+    st.data_editor(
+        df_display[existing_cols].sort_values(price_col, ascending=True),
+        hide_index=True, use_container_width=True, column_config=config, disabled=True
+    )
+
+## ==================##
 ##      Pestañas     ##
 ## ==================##
     
@@ -162,21 +293,8 @@ with tab2:
     ## KPI de ALquiler por Distrito ##
     ## =============================##
     
-    st.subheader(f"KPIs de precios Alquiler (S/.) en el distrito de {input_distrito}", divider="blue")
-    # Asegura numérico
-    df_filtrado_aquiler["precio_pen"] = pd.to_numeric(df_filtrado_aquiler["precio_pen"], errors="coerce")
-    df_kpi = df_filtrado_aquiler.dropna(subset=["precio_pen"])
-    # Formato helper
-    fmt = lambda x: f"S/ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric(f"Total {input_inmueble}", len(df_kpi), border=True)
-    with c2: st.metric("Mínimo", fmt(df_kpi["precio_pen"].min()),border=True)
-    with c3: st.metric("Máximo", fmt(df_kpi["precio_pen"].max()), border=True)
-    c4, c5 = st.columns(2)
-    with c4: st.metric("Promedio", fmt(df_kpi["precio_pen"].mean()), border=True)
-    with c5: st.metric("Mediana", fmt(df_kpi["precio_pen"].median()), border=True)
+    display_kpis(df_filtrado_aquiler, "alquiler", input_distrito, input_inmueble)
     
-
     ## =======================================##
     ## TABLA Detalle de ALquiler por Distrito ##
     ## =======================================##
@@ -220,27 +338,8 @@ with tab2:
             (data["precio_alquiler_agp"] == input_rango_precio_aquiler)
         ].copy()
     
-    
-    data_aquiler = df_filtrado_aquiler[["fuente", "direccion", "precio", "caracteristica", "enlace", "precio_pen", "precio_usd", "area", "baños", "distrito_oficial", "dormitorio", "estacionamientos", "mantenimiento"]].copy()
-    
-    st.data_editor(
-        data_aquiler[["fuente", "direccion", "precio_pen", "area", "dormitorio","baños", "estacionamientos", "mantenimiento","caracteristica", "enlace"]].sort_values("precio_pen", ascending=True),
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "fuente": st.column_config.TextColumn("Fuente", disabled=True),
-            "direccion": st.column_config.TextColumn("Dirección", disabled=True),
-            "precio_pen": st.column_config.NumberColumn("Precio (S/.)", format="S/. %d", disabled=True),
-            "area": st.column_config.NumberColumn("Área (m²)", format="%d", width="small", disabled=True),
-            "dormitorio": st.column_config.NumberColumn("Dormitorio", disabled=True),
-            "baños": st.column_config.NumberColumn("Baños", disabled=True),
-            "estacionamientos": st.column_config.NumberColumn("Estacionamientos", disabled=True),
-            "mantenimiento": st.column_config.NumberColumn("Mantenimiento (S/.)", format="S/. %d", disabled=True),            
-            "enlace": st.column_config.LinkColumn("Abrir", display_text="Abrir anuncio", validate=r"^https?://.*$"),
-        },
-        disabled=True,
-        key="tabla_con_link_alquiler"
-    )
+    # Usamos la función refactorizada para mostrar la tabla
+    display_details_table(df_filtrado_aquiler, "alquiler")
     
     ## ==============================##
     ## Mapa de ALquiler por Distrito ##
@@ -248,81 +347,8 @@ with tab2:
     
     st.subheader(f"Mapa de {input_inmueble} en Alquiler en {input_distrito}", divider="blue")
     
-    df_filtrado_aquiler_map = df_filtrado_aquiler.copy()
-    
-    # Normaliza status y valida lat/lon
-    status_validos = {'geo', 'ok', 'geocoded', 'found'}  # ajusta según tus valores reales
-    df_filtrado_aquiler_map['status'] = df_filtrado_aquiler_map['status'].astype(str).str.lower()
-
-    gdf = df_filtrado_aquiler_map.loc[
-        df_filtrado_aquiler_map['status'].isin(status_validos) &
-        df_filtrado_aquiler_map['lat'].notna() &
-        df_filtrado_aquiler_map['lon'].notna()
-    ].copy()
-    
-    if gdf.empty:
-        st.info("No hay propiedades con geolocalización válida para graficar.")
-    else:
-        precio_pen_col = "precio_pen" if "precio_pen" in df_filtrado_aquiler_map.columns else ("precio_pe" if "precio_pe" in df_filtrado_aquiler_map.columns else None)
-        precio_usd_col = "precio_usd" if "precio_usd" in df_filtrado_aquiler_map.columns else ("dolares" if "dolares" in df_filtrado_aquiler_map.columns else None)
-        cols_extra = [c for c in ["fuente", "domitorio_min", precio_pen_col, precio_usd_col, "enlace", "caracteristica"] if c and c in df_filtrado_aquiler_map.columns]
-
-        # Centro del mapa
-        center_lat, center_lon = gdf['lat'].mean(), gdf['lon'].mean()
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles='OpenStreetMap')
-
-        # Controles útiles
-        # Fullscreen().add_to(m)
-        # MiniMap(toggle_display=True).add_to(m)
-        # MeasureControl(primary_length_unit='meters').add_to(m)
-        LocateControl().add_to(m)
-
-        # Cluster de marcadores
-        cluster = MarkerCluster(name="Propiedades").add_to(m)
-
-        # Función para color (ejemplo: por operación si existe la columna)
-        def color_marker(row):
-            if 'operacion' in row and isinstance(row['operacion'], str):
-                op = row['operacion'].lower()
-                if 'alquiler' in op: return 'blue'
-                if 'venta' in op: return 'green'
-            return 'red'
-
-        # Construye popup/tooltip seguros
-        def safe(x): 
-            return "" if pd.isna(x) else str(x)
-        
-        def fmt_money(x, symbol):
-            if pd.isna(x): return "-"
-            s = f"{symbol} {x:,.0f}".replace(",", "X").replace(".", ",").replace("X",".")
-            return s
-
-        for _, r in gdf.iterrows():
-            precio_pen = fmt_money(r.get(precio_pen_col), "S/.") if precio_pen_col else "-"
-            precio_usd = fmt_money(r.get(precio_usd_col), "US$") if precio_usd_col else "-"
-            gmaps_q = quote(f"{r['direccion']}, Lima, Perú")
-            popup_html = f"""
-            <b>Dirección:</b> {r['direccion']}<br>
-            <b>Caracteristicas:</b> {r.get('caracteristica','-')}<br>
-            <b>Precio PEN:</b> {safe(r.get('precio_pen'))}<br/>
-            <b>Precio USD:</b> {safe(r.get('precio_usd'))}<br/>
-            <b>Dirección:</b> {safe(r.get('direccion_fix') or r.get('direccion'))}<br/>
-            <b>Enlace:</b> <a href="{r['enlace']}" target="_blank">Abrir en {r.get('fuente','-')}</a><br>
-            <a href="https://www.google.com/maps/search/?api=1&query={gmaps_q}" target="_blank">Abrir en Google Maps</a>
-            """
-
-            folium.CircleMarker(
-                location=[r['lat'], r['lon']],
-                radius=5,
-                color=color_marker(r),
-                fill=True,
-                fill_opacity=0.8,
-                tooltip=safe(r.get('direccion_fix') or r.get('direccion')),
-                popup=folium.Popup(popup_html, max_width=350),
-            ).add_to(cluster)
-
-        # Render en Streamlit
-        st_folium(m, height=600, use_container_width=True)
+    # Usamos la función refactorizada para crear el mapa
+    create_map(df_filtrado_aquiler)
     
     
 ## ===============================##
@@ -359,20 +385,8 @@ with tab3:
     ## KPI de Venta por Distrito ##
     ## ==========================##
     
-    st.subheader(f"KPIs de precios Venta ($) en el distrito de {input_distrito}")
-    # Asegura numérico
-    df_filtrado_venta["precio_usd"] = pd.to_numeric(df_filtrado_venta["precio_usd"], errors="coerce")
-    df_kpi = df_filtrado_venta.dropna(subset=["precio_usd"])
-    # Formato helper
-    fmt = lambda x: f"$ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Total propiedades", len(df_kpi), border=True)
-    with c2: st.metric("Mínimo", fmt(df_kpi["precio_usd"].min()), border=True)
-    with c3: st.metric("Máximo", fmt(df_kpi["precio_usd"].max()), border=True)
-    c4, c5 = st.columns(2)
-    with c4: st.metric("Promedio", fmt(df_kpi["precio_usd"].mean()), border=True)
-    with c5: st.metric("Mediana", fmt(df_kpi["precio_usd"].median()), border=True)
-    
+    display_kpis(df_filtrado_venta, "venta", input_distrito, input_inmueble)
+
     ## ====================================##
     ## TABLA Detalle de Venta por Distrito ##
     ## ====================================##
@@ -387,7 +401,7 @@ with tab3:
             "seleccione el precio:"
             , options=labels_venta_precio
             , index=0
-            , key="rango_area_venta"
+            , key="rango_precio_venta"
         )
         
     with e2:
@@ -397,8 +411,7 @@ with tab3:
             "seleccione el area:"
             , options=labels_area_venta
             , index=0 
-            , key="rango_area_alquiler"
-            
+            , key="rango_area_venta"
         )
         
     ## Filtrado de Venta
@@ -406,35 +419,20 @@ with tab3:
         df_filtrado_venta = data[
             (data["inmueble"] == input_inmueble) &
             (data["distrito_oficial"] == input_distrito) &
-            (data["operacion"] == "alquiler")
+            (data["operacion"] == "venta")
         ].copy()
         
     else:
         df_filtrado_venta = data[
             (data["inmueble"] == input_inmueble) &
             (data["distrito_oficial"] == input_distrito) &
-            (data["operacion"] == "alquiler") &
+            (data["operacion"] == "venta") &
             (data["area_agp"] == input_rango_area_venta) &
             (data["precio_venta_agp"] == input_rango_precio_venta)
         ].copy()
     
-    data_venta = df_filtrado_venta[["fuente", "direccion", "precio", "caracteristica", "enlace", "precio_pen", "precio_usd", "area", "baños", "distrito_oficial", "dormitorio", "estacionamientos", "mantenimiento"]].copy()
-    
-    # st.dataframe(data_aquiler)
-    st.data_editor(
-        data_venta[["fuente", "direccion", "precio_usd", "area", "dormitorio","baños", "estacionamientos","caracteristica", "enlace"]].sort_values("precio_usd", ascending=True),
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "fuente": st.column_config.TextColumn("Fuente", disabled=True),
-            "direccion": st.column_config.TextColumn("Dirección", disabled=True),
-            "precio_usd": st.column_config.NumberColumn("Precio $.", format="$ %d", disabled=True),
-            "caracteristicas": st.column_config.NumberColumn("Caracteristicas", disabled=True),
-            "enlace": st.column_config.LinkColumn("Abrir", display_text="Abrir anuncio", validate=r"^https?://.*$"),
-        },
-        disabled=True,
-        key="tabla_con_link_venta"
-    )
+    # Usamos la función refactorizada para mostrar la tabla
+    display_details_table(df_filtrado_venta, "venta")
     
     ## ===========================##
     ## Mapa de Venta por Distrito ##
@@ -442,78 +440,5 @@ with tab3:
     
     st.subheader(f"Mapa de {input_inmueble} en Venta en {input_distrito}", divider="blue")
     
-    df_filtrado_venta_map = df_filtrado_venta.copy()
-    
-    # Normaliza status y valida lat/lon
-    status_validos = {'geo', 'ok', 'geocoded', 'found'}  # ajusta según tus valores reales
-    df_filtrado_venta_map['status'] = df_filtrado_venta_map['status'].astype(str).str.lower()
-
-    gdf = df_filtrado_venta_map.loc[
-        df_filtrado_venta_map['status'].isin(status_validos) &
-        df_filtrado_venta_map['lat'].notna() &
-        df_filtrado_venta_map['lon'].notna()
-    ].copy()
-    
-    if gdf.empty:
-        st.info("No hay propiedades con geolocalización válida para graficar.")
-    else:
-        precio_pen_col = "precio_pen" if "precio_pen" in df_filtrado_venta_map.columns else ("precio_pe" if "precio_pe" in df_filtrado_venta_map.columns else None)
-        precio_usd_col = "precio_usd" if "precio_usd" in df_filtrado_venta_map.columns else ("dolares" if "dolares" in df_filtrado_venta_map.columns else None)
-        cols_extra = [c for c in ["fuente", "domitorio_min", precio_pen_col, precio_usd_col, "enlace", "caracteristica"] if c and c in df_filtrado_venta_map.columns]
-
-        # Centro del mapa
-        center_lat, center_lon = gdf['lat'].mean(), gdf['lon'].mean()
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles='OpenStreetMap')
-
-        # Controles útiles
-        # Fullscreen().add_to(m)
-        # MiniMap(toggle_display=True).add_to(m)
-        # MeasureControl(primary_length_unit='meters').add_to(m)
-        LocateControl().add_to(m)
-
-        # Cluster de marcadores
-        cluster = MarkerCluster(name="Propiedades").add_to(m)
-
-        # Función para color (ejemplo: por operación si existe la columna)
-        def color_marker(row):
-            if 'operacion' in row and isinstance(row['operacion'], str):
-                op = row['operacion'].lower()
-                if 'alquiler' in op: return 'blue'
-                if 'venta' in op: return 'green'
-            return 'red'
-
-        # Construye popup/tooltip seguros
-        def safe(x): 
-            return "" if pd.isna(x) else str(x)
-        
-        def fmt_money(x, symbol):
-            if pd.isna(x): return "-"
-            s = f"{symbol} {x:,.0f}".replace(",", "X").replace(".", ",").replace("X",".")
-            return s
-
-        for _, r in gdf.iterrows():
-            precio_pen = fmt_money(r.get(precio_pen_col), "S/.") if precio_pen_col else "-"
-            precio_usd = fmt_money(r.get(precio_usd_col), "US$") if precio_usd_col else "-"
-            gmaps_q = quote(f"{r['direccion']}, Lima, Perú")
-            popup_html = f"""
-            <b>Dirección:</b> {r['direccion']}<br>
-            <b>Caracteristicas:</b> {r.get('caracteristica','-')}<br>
-            <b>Precio PEN:</b> {safe(r.get('precio_pen'))}<br/>
-            <b>Precio USD:</b> {safe(r.get('precio_usd'))}<br/>
-            <b>Dirección:</b> {safe(r.get('direccion_fix') or r.get('direccion'))}<br/>
-            <b>Enlace:</b> <a href="{r['enlace']}" target="_blank">Abrir en {r.get('fuente','-')}</a><br>
-            <a href="https://www.google.com/maps/search/?api=1&query={gmaps_q}" target="_blank">Abrir en Google Maps</a>
-            """
-
-            folium.CircleMarker(
-                location=[r['lat'], r['lon']],
-                radius=5,
-                color=color_marker(r),
-                fill=True,
-                fill_opacity=0.8,
-                tooltip=safe(r.get('direccion_fix') or r.get('direccion')),
-                popup=folium.Popup(popup_html, max_width=350),
-            ).add_to(cluster)
-
-        # Render en Streamlit
-        st_folium(m, height=600, use_container_width=True)
+    # Usamos la función refactorizada para crear el mapa
+    create_map(df_filtrado_venta)
