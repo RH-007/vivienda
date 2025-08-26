@@ -11,6 +11,7 @@ from streamlit_folium import st_folium
 import folium
 from folium.plugins import MarkerCluster, MiniMap, Fullscreen, MeasureControl, LocateControl
 from urllib.parse import quote
+import plotly.express as px
 
 
 ## Titulo
@@ -51,6 +52,36 @@ def load_data(path):
     """
     df = pd.read_csv(path, sep="|", encoding="utf-8")
     
+    # --- MEJORA: Deduplicación de Anuncios ---
+    # Identificamos y eliminamos anuncios duplicados que aparecen en múltiples fuentes (ej. Urbania y Adondevivir).
+    # Un anuncio se considera único por la combinación de su dirección, área, precios y tipo de operación.
+    # Mantenemos la primera aparición ('first') que encuentre pandas.
+    subset_cols = ['distrito_oficial', 'direccion']
+    
+    # Eliminamos los duplicados basándonos en las columnas clave.
+    # `inplace=True` modifica el DataFrame directamente.
+    df.drop_duplicates(subset=subset_cols, keep='first', inplace=True)
+
+    # --- MEJORA: Creación de Categoría de Distrito ---
+    # Se crea una nueva columna 'distrito_categoria' para segmentar los distritos en zonas de Lima.
+    zonas_lima = {
+        'Lima Top': ['Miraflores', 'San Isidro', 'La Molina', 'Santiago de Surco', 'San Borja', 'Barranco'],
+        'Lima Moderna': ['Jesús María', 'Lince', 'Magdalena', 'San Miguel', 'Pueblo Libre', 'Surquillo'],
+        'Lima Centro': ['Lima Cercado', 'Breña', 'La Victoria', 'Rímac', 'San Luis'],
+        'Lima Este': ['Ate Vitarte', 'Cieneguilla', 'Chaclacayo', 'Chosica Lurigancho', 'Santa Anita', 'El Agustino', 'San Juan de Lurigancho'],
+        'Lima Norte': ['Carabayllo', 'Comas', 'Independencia', 'Los Olivos', 'Puente Piedra', 'San Martín de Porres', 'Ancón', 'Santa Rosa'],
+        'Lima Sur': ['Chorrillos', 'Lurín', 'Pachacámac', 'San Juan de Miraflores', 'Villa El Salvador', 'Villa María del Triunfo', 'Pucusana', 'Punta Hermosa', 'Punta Negra', 'San Bartolo', 'Santa María del Mar']
+    }
+
+    # Se crea un mapeo inverso (distrito -> zona) para una asignación eficiente.
+    distrito_a_zona = {distrito: zona for zona, distritos_en_zona in zonas_lima.items() for distrito in distritos_en_zona}
+
+    # Se aplica el mapeo para crear la nueva columna.
+    # Los distritos no encontrados en el mapeo se asignan a 'Otra Zona'.
+    df['distrito_categoria'] = df['distrito_oficial'].map(distrito_a_zona).fillna('Otra Zona')
+    # Se convierte a tipo 'category' para optimizar memoria y rendimiento.
+    df['distrito_categoria'] = df['distrito_categoria'].astype('category')
+
     # OPTIMIZACIÓN OPCIONAL: Convertir columnas a tipos más eficientes
     # Esto reduce el uso de memoria y acelera los cálculos.
     # df['distrito_oficial'] = df['distrito_oficial'].astype('category')
@@ -72,62 +103,6 @@ operacion = data["operacion"].unique()
 ##    Funciones      ##
 ## ==================##
 
-def create_map(df: pd.DataFrame):
-    """Genera y muestra un mapa de Folium con las propiedades de un DataFrame."""
-    
-    # Filtra propiedades con geolocalización válida.
-    status_validos = {'geo', 'ok', 'geocoded', 'found'}
-    
-    # .loc con una máscara booleana devuelve una copia. Se añade .copy() para ser explícitos.
-    gdf = df.loc[
-        df['status'].astype(str).str.lower().isin(status_validos) &
-        df['lat'].notna() &
-        df['lon'].notna()
-    ].copy()
-    
-    if gdf.empty:
-        st.info("No hay propiedades con geolocalización válida para graficar.")
-        return
-
-    # Centro del mapa
-    center_lat, center_lon = gdf['lat'].mean(), gdf['lon'].mean()
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles='OpenStreetMap')
-
-    # Controles útiles
-    LocateControl().add_to(m)
-
-    # Cluster de marcadores
-    cluster = MarkerCluster(name="Propiedades").add_to(m)
-
-    # Construye popup/tooltip seguros
-    def safe(x): 
-        return "" if pd.isna(x) else str(x)
-
-    for _, r in gdf.iterrows():
-        gmaps_q = quote(f"{r.get('direccion', '')}, Lima, Perú")
-        popup_html = f"""
-        <b>Dirección:</b> {safe(r.get('direccion_fix') or r.get('direccion'))}<br>
-        <b>Caracteristicas:</b> {r.get('caracteristica','-')}<br>
-        <b>Precio PEN:</b> {f"S/ {r.get('precio_pen'):,.0f}" if pd.notna(r.get('precio_pen')) else '-'}<br/>
-        <b>Precio USD:</b> {f"US$ {r.get('precio_usd'):,.0f}" if pd.notna(r.get('precio_usd')) else '-'}<br/>
-        <b>Enlace:</b> <a href="{r['enlace']}" target="_blank">Abrir en {r.get('fuente','-')}</a><br>
-        <a href="https://www.google.com/maps/search/?api=1&query={gmaps_q}" target="_blank">Abrir en Google Maps</a>
-        """
-        
-        color = 'blue' if r.get('operacion') == 'alquiler' else 'green'
-
-        folium.CircleMarker(
-            location=[r['lat'], r['lon']],
-            radius=5,
-            color=color,
-            fill=True,
-            fill_opacity=0.8,
-            tooltip=safe(r.get('direccion_fix') or r.get('direccion')),
-            popup=folium.Popup(popup_html, max_width=350),
-        ).add_to(cluster)
-
-    st_folium(m, height=600, use_container_width=True)
-
 def display_kpis(df: pd.DataFrame, operation: str, distrito: str, inmueble: str):
     """Calcula y muestra los KPIs de precios para una operación específica."""
     
@@ -140,26 +115,55 @@ def display_kpis(df: pd.DataFrame, operation: str, distrito: str, inmueble: str)
         symbol = "$"
         title = f"KPIs de precios Venta ({symbol}) en {distrito}"
 
-    st.subheader(title, divider="blue")
-    
     df_kpi = df.copy()
     df_kpi[price_col] = pd.to_numeric(df_kpi[price_col], errors="coerce")
     df_kpi.dropna(subset=[price_col], inplace=True)
+
+    st.subheader(title, divider="blue")
 
     if df_kpi.empty:
         st.info("No hay datos de precios para mostrar KPIs.")
         return
 
+    # --- MEJORA: Calcular métricas globales para comparación ---
+    df_global = data[
+        (data["inmueble"] == inmueble) &
+        (data["operacion"] == operation)
+    ].copy()
+    
+    
+    df_global[price_col] = pd.to_numeric(df_global[price_col], errors="coerce")
+    global_avg = df_global[price_col].mean()
+    global_md = df_global[price_col].median()
+
+    # --- Cálculo de métricas locales ---
+    
     fmt = lambda x: f"{symbol} {x:,.0f}"
     
+    district_avg = df_kpi[price_col].mean()
+    delta_avg = district_avg - global_avg
+
+    district_md = df_kpi[price_col].median()
+    delta_md = district_md - global_md
+    
     c1, c2, c3 = st.columns(3)
-    with c1: st.metric(f"Total {inmueble}", len(df_kpi), border=True)
-    with c2: st.metric("Mínimo", fmt(df_kpi[price_col].min()), border=True)
-    with c3: st.metric("Máximo", fmt(df_kpi[price_col].max()), border=True)
+    with c1: st.metric(f"🚪 Total {inmueble}", len(df_kpi))
+    with c2: st.metric("📉 Mínimo", fmt(df_kpi[price_col].min()))
+    with c3: st.metric("📈 Máximo", fmt(df_kpi[price_col].max()))
     
     c4, c5 = st.columns(2)
-    with c4: st.metric("Promedio", fmt(df_kpi[price_col].mean()), border=True)
-    with c5: st.metric("Mediana", fmt(df_kpi[price_col].median()), border=True)
+    with c4: 
+        st.metric(
+            label="📊 Promedio", 
+            value=fmt(district_avg), 
+            delta=f"{delta_avg:,.0f} vs. promedio general",
+        )
+    with c5: 
+        st.metric(
+            label="📊 Mediana", 
+            value=fmt(district_md), 
+            delta=f"{delta_md:,.0f} vs. mediana general",
+        )
 
 def display_details_table(df: pd.DataFrame, operation: str):
     """Muestra la tabla de detalles de propiedades para una operación específica."""
@@ -198,36 +202,124 @@ def display_details_table(df: pd.DataFrame, operation: str):
         df_display[existing_cols].sort_values(price_col, ascending=True),
         hide_index=True, use_container_width=True, column_config=config, disabled=True
     )
+    
+def create_map(df: pd.DataFrame):
+    """Genera y muestra un mapa de Folium con las propiedades de un DataFrame."""
+    
+    # Filtra propiedades con geolocalización válida.
+    status_validos = {'geo', 'ok', 'geocoded', 'found'}
+    
+    # .loc con una máscara booleana devuelve una copia. Se añade .copy() para ser explícitos.
+    gdf = df.loc[
+        df['status'].astype(str).str.lower().isin(status_validos) &
+        df['lat'].notna() &
+        df['lon'].notna()
+    ].copy()
+    
+    if gdf.empty:
+        st.info("No hay propiedades con geolocalización válida para graficar.")
+        return
+
+    # Centro del mapa
+    center_lat, center_lon = gdf['lat'].mean(), gdf['lon'].mean()
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles='OpenStreetMap')
+    
+    MiniMap(toggle_display=True).add_to(m)
+    Fullscreen(position='topright').add_to(m)
+
+    # Controles útiles
+    LocateControl().add_to(m)
+
+    # Cluster de marcadores
+    cluster = MarkerCluster(name="Propiedades").add_to(m)
+
+    # Construye popup/tooltip seguros
+    def safe(x): 
+        return "" if pd.isna(x) else str(x)
+
+    for _, r in gdf.iterrows():
+        gmaps_q = quote(f"{r.get('direccion', '')}, Lima, Perú")
+        popup_html = f"""
+        <b>Dirección:</b> {safe(r.get('direccion_fix') or r.get('direccion'))}<br>
+        <b>Caracteristicas:</b> {r.get('caracteristica','-')}<br>
+        <b>Precio PEN:</b> {f"S/ {r.get('precio_pen'):,.0f}" if pd.notna(r.get('precio_pen')) else '-'}<br/>
+        <b>Precio USD:</b> {f"US$ {r.get('precio_usd'):,.0f}" if pd.notna(r.get('precio_usd')) else '-'}<br/>
+        <b>Enlace:</b> <a href="{r['enlace']}" target="_blank">Abrir en {r.get('fuente','-')}</a><br>
+        <a href="https://www.google.com/maps/search/?api=1&query={gmaps_q}" target="_blank">Abrir en Google Maps</a>
+        """
+        
+        color = 'blue' if r.get('operacion') == 'alquiler' else 'green'
+
+        folium.CircleMarker(
+            location=[r['lat'], r['lon']],
+            radius=5,
+            color=color,
+            fill=True,
+            fill_opacity=0.8,
+            tooltip=safe(r.get('direccion_fix') or r.get('direccion')),
+            popup=folium.Popup(popup_html, max_width=350),
+        ).add_to(cluster)
+
+    st_folium(m, height=600, use_container_width=True)
 
 ## ==================##
 ##      Pestañas     ##
 ## ==================##
     
-tab1, tab2, tab3 = st.tabs(["🔎 Análisis General", "📦 Alquiler", "📊 Venta"])
+tab1, tab2, tab3 = st.tabs(["🔎 Análisis Distrito", "📦 Alquiler", "📊 Venta"])
+
+
+## ===========================##
+##      Analisis Distrito     ##
+## ===========================##
+
 
 with tab1:
 
-    c1, c2 = st.columns([2, 2], gap="small")
+    c1, c2, c3 = st.columns(3, gap="small")
     with c1:
         st.markdown("**Inmueble**")
         input_inmueble = st.selectbox(
             "Inmueble", inmueble, key="f_inm",
             label_visibility="collapsed"
         )
+        
     with c2:
         st.markdown("**Operación**")
         input_operacion = st.selectbox(
             "Operación", operacion, key="f_ope",
             label_visibility="collapsed"
         )
+        
+    with c3:
+        st.markdown("**Zona de Lima**")
+        # Usamos la nueva columna 'distrito_categoria' para el filtro
+        zonas = ['Todos','Lima Top', 'Lima Moderna', 'Lima Centro',  'Lima Este', 'Lima Norte',  'Lima Sur']
+        input_zona = st.selectbox(
+            "Zona"
+            , zonas
+            , key="f_zona"
+            , label_visibility="collapsed"
+            , index=0
+        )
 
     col_precio = "precio_usd" if input_operacion == "venta" else "precio_pen"
     simbolo   = "US$" if input_operacion == "venta" else "S/"
-
-    df_filtrado = data[
-        (data["inmueble"] == input_inmueble) &
-        (data["operacion"] == input_operacion)
-    ].copy()
+    
+    
+    ## Filtrado de Alquiler
+    if input_zona == "Todos":
+        df_filtrado = data[
+            (data["inmueble"] == input_inmueble) &
+            (data["operacion"] == input_operacion) 
+        ].copy()
+        
+    else:
+        df_filtrado = data[
+            (data["inmueble"] == input_inmueble) &
+            (data["operacion"] == input_operacion) &
+            (data["distrito_categoria"] == input_zona) # Filtro por la nueva zona
+        ].copy()
 
     data_agrupada = df_filtrado.groupby("distrito_oficial")
     data_agrupada_df = data_agrupada[col_precio].agg(
@@ -245,7 +337,7 @@ with tab1:
     data_agrupada_df_fmt[cols_precios] = data_agrupada_df_fmt[cols_precios]\
         .applymap(lambda x: f"{simbolo} {x:,.0f}")
     
-    st.subheader(f"Lista de {input_inmueble} en {input_operacion}")
+    st.subheader(f"Resumen de {input_inmueble} en {input_operacion} para **{input_zona}**")
     
     st.data_editor(
         data_agrupada_df_fmt.sort_values("n", ascending=False),
@@ -253,10 +345,73 @@ with tab1:
         column_config={
             "distrito_oficial": st.column_config.TextColumn("Distrito", disabled=True)
         },
-        disabled=True, height=1000,
+        disabled=True,
         key="data_agrupada_fmt"
     )
     
+    
+    st.subheader("Análisis Gráfico Interactivo", divider="blue")
+
+    if df_filtrado.empty:
+        st.warning("No hay datos suficientes para generar gráficos con los filtros seleccionados.")
+    else:
+        # Gráfico 1: Distribución de Precios por Distrito (Box Plot)
+        # Este gráfico es ideal para comparar la dispersión de precios entre distritos.
+        st.markdown(f"##### Distribución de Precios de {input_inmueble} en {input_operacion}")
+        fig1 = px.box(df_filtrado, 
+                      x="distrito_oficial", 
+                      y=col_precio,
+                      color="distrito_oficial",
+                      points="all",
+                      labels={"distrito_oficial": "Distrito", col_precio: f"Precio ({simbolo})"})
+        fig1.update_layout(showlegend=False)
+        st.plotly_chart(fig1, use_container_width=True)
+
+        # --- Columnas para los siguientes gráficos ---
+        g1, g2 = st.columns(2)
+
+        with g1:
+            # Gráfico 2: Número de Propiedades por Distrito (Bar Chart)
+            st.markdown("##### Cantidad de Propiedades por Distrito")
+            prop_por_distrito = df_filtrado['distrito_oficial'].value_counts()
+            st.bar_chart(prop_por_distrito)
+
+        with g2:
+            # Gráfico 3: Precio Promedio por m² por Distrito (Bar Chart)
+            st.markdown(f"##### Precio Promedio por m² ({simbolo})")
+            df_plot = df_filtrado[(df_filtrado['area'] > 0) & (df_filtrado[col_precio] > 0)].copy()
+            if not df_plot.empty:
+                df_plot['precio_m2'] = round(df_plot[col_precio] / df_plot['area'],2)
+                precio_m2_distrito = df_plot.groupby('distrito_oficial')['precio_m2'].mean().round(2).sort_values(ascending=False)
+                st.bar_chart(precio_m2_distrito)
+            else:
+                st.info("No hay datos de área o precio para calcular el precio por m².")
+
+        # Gráfico 4: Relación Área vs. Precio (Scatter Plot)
+        st.markdown(f"##### Relación Área vs. Precio para {input_inmueble}")
+        # Filtrar outliers para una mejor visualización, mostrando el 95% de los datos
+        area_limite = df_filtrado['area'].quantile(0.95)
+        precio_limite = df_filtrado[col_precio].quantile(0.95)
+        
+        df_scatter = df_filtrado[
+            (df_filtrado['area'] > 0) & (df_filtrado[col_precio] > 0) &
+            (df_filtrado['area'] <= area_limite) & 
+            (df_filtrado[col_precio] <= precio_limite)
+        ].copy()
+
+        if not df_scatter.empty:
+            fig4 = px.scatter(df_scatter, x="area", y=col_precio, color="distrito_oficial",
+                              hover_data=['direccion'], title=f"Precio vs. Área (mostrando el 95% de los datos)",
+                              labels={"area": "Área (m²)", col_precio: f"Precio ({simbolo})"})
+            st.plotly_chart(fig4, use_container_width=True)
+
+    
+## =================================##
+## PESTAÑA de ALquiler por Distrito ##
+
+
+    
+
     
 ## =================================##
 ## PESTAÑA de ALquiler por Distrito ##
