@@ -53,7 +53,7 @@ def load_data(path):
     df = pd.read_csv(path, sep="|", encoding="utf-8")
     
     # --- MEJORA: Deduplicación de Anuncios ---
-    # Identificamos y eliminamos anuncios duplicados que aparecen en múltiples fuentes (ej. Urbania y Adondevivir).
+    # Identificamos y eliminamos anuncios duplicados que aparecen en múltiples fuentes (ej. Urbania y Adondevivir). 
     # Un anuncio se considera único por la combinación de su dirección, área, precios y tipo de operación.
     # Mantenemos la primera aparición ('first') que encuentre pandas.
     subset_cols = ['distrito_oficial', 'direccion']
@@ -75,12 +75,30 @@ def load_data(path):
 
     # Se crea un mapeo inverso (distrito -> zona) para una asignación eficiente.
     distrito_a_zona = {distrito: zona for zona, distritos_en_zona in zonas_lima.items() for distrito in distritos_en_zona}
-
     # Se aplica el mapeo para crear la nueva columna.
-    # Los distritos no encontrados en el mapeo se asignan a 'Otra Zona'.
     df['distrito_categoria'] = df['distrito_oficial'].map(distrito_a_zona).fillna('Otra Zona')
-    # Se convierte a tipo 'category' para optimizar memoria y rendimiento.
     df['distrito_categoria'] = df['distrito_categoria'].astype('category')
+
+    # --- MEJORA: Creación de columnas de agrupación para filtros ---
+    # Se crean columnas categóricas para los rangos de precio y área, que se usarán en los filtros de las pestañas.
+    df['precio_pen'] = pd.to_numeric(df['precio_pen'], errors='coerce')
+    df['precio_usd'] = pd.to_numeric(df['precio_usd'], errors='coerce')
+    df['area'] = pd.to_numeric(df['area'], errors='coerce')
+
+    # Bins y labels para precio de alquiler (Soles)
+    bins_alquiler = [-1, 1000, 2500, 5000, 10000, float('inf')]
+    labels_alquiler = ["Hasta S/ 1000", "De S/ 1000 a S/ 2500", "De S/ 2500 a S/ 5000", "De S/ 5000 a S/ 10000", "De S/ 10000 a más"]
+    df['precio_alquiler_agp'] = pd.cut(df['precio_pen'], bins=bins_alquiler, labels=labels_alquiler, right=False)
+
+    # Bins y labels para precio de venta (Dólares)
+    bins_venta = [-1, 50000, 100000, 200000, 500000, float('inf')]
+    labels_venta = ["Hasta $ 50k", "De $ 50k a $ 100k", "De $ 100k a $ 200k", "De $ 200k a $ 500k", "De $ 500k a más"]
+    df['precio_venta_agp'] = pd.cut(df['precio_usd'], bins=bins_venta, labels=labels_venta, right=False)
+
+    # Bins y labels para área (m²)
+    bins_area = [-1, 50, 100, 200, 300, float('inf')]
+    labels_area = ["Hasta 50m2", "De 50m2 a 100m2", "De 100m2 a 200m2", "De 200m2 a 300m2", "De 300m2 a más"]
+    df['area_agp'] = pd.cut(df['area'], bins=bins_area, labels=labels_area, right=False)
 
     # OPTIMIZACIÓN OPCIONAL: Convertir columnas a tipos más eficientes
     # Esto reduce el uso de memoria y acelera los cálculos.
@@ -359,11 +377,11 @@ with tab1:
         # Este gráfico es ideal para comparar la dispersión de precios entre distritos.
         st.markdown(f"##### Distribución de Precios de {input_inmueble} en {input_operacion}")
         fig1 = px.box(df_filtrado, 
-                      x="distrito_oficial", 
-                      y=col_precio,
-                      color="distrito_oficial",
-                      points="all",
-                      labels={"distrito_oficial": "Distrito", col_precio: f"Precio ({simbolo})"})
+                    x="distrito_oficial", 
+                    y=col_precio,
+                    color="distrito_oficial",
+                    points="all",
+                    labels={"distrito_oficial": "Distrito", col_precio: f"Precio ({simbolo})"})
         fig1.update_layout(showlegend=False)
         st.plotly_chart(fig1, use_container_width=True)
 
@@ -401,17 +419,9 @@ with tab1:
 
         if not df_scatter.empty:
             fig4 = px.scatter(df_scatter, x="area", y=col_precio, color="distrito_oficial",
-                              hover_data=['direccion'], title=f"Precio vs. Área (mostrando el 95% de los datos)",
-                              labels={"area": "Área (m²)", col_precio: f"Precio ({simbolo})"})
+                            hover_data=['direccion'], title=f"Precio vs. Área (mostrando el 95% de los datos)",
+                            labels={"area": "Área (m²)", col_precio: f"Precio ({simbolo})"})
             st.plotly_chart(fig4, use_container_width=True)
-
-    
-## =================================##
-## PESTAÑA de ALquiler por Distrito ##
-
-
-    
-
     
 ## =================================##
 ## PESTAÑA de ALquiler por Distrito ##
@@ -463,6 +473,7 @@ with tab2:
         input_rango_precio_aquiler = st.selectbox(
             "seleccione el precio:"
             , options=labels_alquiler_precio
+            , key="rango_precio_alquiler" # <- Clave única para el widget
             , index=0
         )
         
@@ -472,29 +483,24 @@ with tab2:
         input_rango_area_alquiler = st.selectbox(
             "seleccione el area:"
             , options=labels_area
+            , key="rango_area_alquiler" # <- Clave única para el widget
             , index=0 
             
         )
         
-    ## Filtrado de Alquiler
-    if input_rango_precio_aquiler == "Todos" and input_rango_area_alquiler == "Todos":
-        df_filtrado_aquiler = data[
-            (data["inmueble"] == input_inmueble) &
-            (data["distrito_oficial"] == input_distrito) &
-            (data["operacion"] == "alquiler")
-        ].copy()
-        
-    else:
-        df_filtrado_aquiler = data[
-            (data["inmueble"] == input_inmueble) &
-            (data["distrito_oficial"] == input_distrito) &
-            (data["operacion"] == "alquiler") &
-            (data["area_agp"] == input_rango_area_alquiler) &
-            (data["precio_alquiler_agp"] == input_rango_precio_aquiler)
-        ].copy()
-    
+    # Se crea una copia del DataFrame filtrado por distrito para aplicar los filtros de rango.
+    df_tabla_alquiler = df_filtrado_aquiler.copy()
+
+    # Se aplica el filtro de rango de precio si no es "Todos".
+    if input_rango_precio_aquiler != "Todos":
+        df_tabla_alquiler = df_tabla_alquiler[df_tabla_alquiler["precio_alquiler_agp"] == input_rango_precio_aquiler]
+
+    # Se aplica el filtro de rango de área si no es "Todos".
+    if input_rango_area_alquiler != "Todos":
+        df_tabla_alquiler = df_tabla_alquiler[df_tabla_alquiler["area_agp"] == input_rango_area_alquiler]
+
     # Usamos la función refactorizada para mostrar la tabla
-    display_details_table(df_filtrado_aquiler, "alquiler")
+    display_details_table(df_tabla_alquiler, "alquiler")
     
     ## ==============================##
     ## Mapa de ALquiler por Distrito ##
@@ -551,14 +557,14 @@ with tab3:
     e1, e2 = st.columns([2, 2], gap="small")
     with e1:
         st.markdown("**Precio**")
-        labels_venta_precio = ["Todos", "Hasta $ 50k", "De $ 50k a $ 100k", "De $ 100k a $ 200k", "De $ 100k a $ 500k", "De $ 500k a más"]
+        # Se corrigen las etiquetas para que los rangos no se superpongan.
+        labels_venta_precio = ["Todos", "Hasta $ 50k", "De $ 50k a $ 100k", "De $ 100k a $ 200k", "De $ 200k a $ 500k", "De $ 500k a más"]
         input_rango_precio_venta = st.selectbox(
             "seleccione el precio:"
             , options=labels_venta_precio
             , index=0
             , key="rango_precio_venta"
         )
-        
     with e2:
         st.markdown("**Área**")       
         labels_area_venta = ["Todos", "Hasta 50m2", "De 50m2 a 100m2", "De 100m2 a 200m2", "De 200m2 a 300m2", "De 300m2 a más"]
@@ -569,25 +575,20 @@ with tab3:
             , key="rango_area_venta"
         )
         
-    ## Filtrado de Venta
-    if input_rango_precio_venta == "Todos" and input_rango_area_venta == "Todos":
-        df_filtrado_venta = data[
-            (data["inmueble"] == input_inmueble) &
-            (data["distrito_oficial"] == input_distrito) &
-            (data["operacion"] == "venta")
-        ].copy()
-        
-    else:
-        df_filtrado_venta = data[
-            (data["inmueble"] == input_inmueble) &
-            (data["distrito_oficial"] == input_distrito) &
-            (data["operacion"] == "venta") &
-            (data["area_agp"] == input_rango_area_venta) &
-            (data["precio_venta_agp"] == input_rango_precio_venta)
-        ].copy()
+    # Se crea una copia del DataFrame filtrado por distrito para aplicar los filtros de rango.
+    df_tabla_venta = df_filtrado_venta.copy()
+
+    # Se aplica el filtro de rango de precio si no es "Todos".
+    if input_rango_precio_venta != "Todos":
+        df_tabla_venta = df_tabla_venta[df_tabla_venta["precio_venta_agp"] == input_rango_precio_venta]
+
+    # Se aplica el filtro de rango de área si no es "Todos".
+    if input_rango_area_venta != "Todos":
+        df_tabla_venta = df_tabla_venta[df_tabla_venta["area_agp"] == input_rango_area_venta]
+
     
     # Usamos la función refactorizada para mostrar la tabla
-    display_details_table(df_filtrado_venta, "venta")
+    display_details_table(df_tabla_venta, "venta")
     
     ## ===========================##
     ## Mapa de Venta por Distrito ##
