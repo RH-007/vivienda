@@ -23,7 +23,7 @@ Bienvenido a la plataforma interactiva de análisis inmobiliario de Lima.
 
 Aquí podrás explorar **departamentos, casas y terrenos** en venta y alquiler, con datos reales y actualizados. 
 
-Las fuentes son: 
+Las fuentes que se usaron para recopilar esta información al 19 de agosto de 2025 fueron: 
 - 🏡 [Urbania](https://urbania.pe)
 - 🏠 [Adondevivir](https://www.adondevivir.com)
 
