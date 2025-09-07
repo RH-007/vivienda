@@ -17,7 +17,7 @@ import base64
 
 st.set_page_config(layout="wide")
 
-IMG_PATH = Path(r"C:\Users\PC\Desktop\Proyectos\Proyectos_Py\6.Analisis_Alquiler_Venta\vivienda\vivienda\img\calles.png")
+IMG_PATH = Path(".img\calles.png")
 
 # Convertir a base64 para embeberla en el HTML (funciona igual en deploy)
 def get_base64(path):
