@@ -551,7 +551,7 @@ with tab2:
 
 with tab3:
     
-    st.subheader("Propiedades en VENTA", divider="blue")
+    st.subheader("Propiedades en Venta", divider="blue")
     
     c1, c2 = st.columns([2, 2], gap="small")
     with c1:
