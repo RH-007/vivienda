@@ -13,28 +13,9 @@ from folium.plugins import MarkerCluster, MiniMap, Fullscreen, MeasureControl, L
 from urllib.parse import quote
 import plotly.express as px
 
-## <img src="./data/rent apartment flat illustration set.jpg" alt="Banner Image">
-## <img src="https://img.freepik.com/premium-photo/wide-banner-with-many-random-square-hexagons-charcoal-dark-black-color_105589-1820.jpg" alt="Banner Image">
+
 st.set_page_config(layout="wide")
-# Custom HTML/CSS for the banner
-custom_html = """
-<div class="banner">
-    <img src="https://www.freepik.es/vector-gratis/personas-que-buscan-eligen-apartamento-alquilar-linea-firman-contrato-arrendamiento-conjunto-plano-ilustracion-vectorial-aislada_72084608.htm#fromView=search&page=1&position=0&uuid=ab909833-0423-428c-8c2b-18af4a1a0972&query=analisis+inmobilidario" alt="Banner Image">
-</div>
-<style>
-    .banner {
-        width: 160%;
-        height: 200px;
-        overflow: hidden;
-    }
-    .banner img {
-        width: 100%;
-        object-fit: cover;
-    }
-</style>
-"""
-# Display the custom HTML
-st.components.v1.html(custom_html)
+st.image(".img/rent_apartment_flat_illustration_set.jpg", use_container_width=True)
 
 ## Titulo
 # st.image("sunrise.jpg", caption="Sunrise by the mountains")
