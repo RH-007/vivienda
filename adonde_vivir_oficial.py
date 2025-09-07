@@ -80,7 +80,6 @@ def load_data(path):
     df['distrito_categoria'] = df['distrito_oficial'].map(distrito_a_zona).fillna('Otra Zona')
     df['distrito_categoria'] = df['distrito_categoria'].astype('category')
 
-    # --- MEJORA: Creación de columnas de agrupación para filtros ---
     # Se crean columnas categóricas para los rangos de precio y área, que se usarán en los filtros de las pestañas.
     df['precio_pen'] = pd.to_numeric(df['precio_pen'], errors='coerce')
     df['precio_usd'] = pd.to_numeric(df['precio_usd'], errors='coerce')
@@ -100,14 +99,12 @@ def load_data(path):
     bins_area = [-1, 50, 100, 200, 300, float('inf')]
     labels_area = ["Hasta 50m2", "De 50m2 a 100m2", "De 100m2 a 200m2", "De 200m2 a 300m2", "De 300m2 a más"]
     df['area_agp'] = pd.cut(df['area'], bins=bins_area, labels=labels_area, right=False)
-
-    # OPTIMIZACIÓN OPCIONAL: Convertir columnas a tipos más eficientes
-    # Esto reduce el uso de memoria y acelera los cálculos.
-    # df['distrito_oficial'] = df['distrito_oficial'].astype('category')
-    # df['inmueble'] = df['inmueble'].astype('category')
-    # df['operacion'] = df['operacion'].astype('category')
-    # df['area'] = pd.to_numeric(df['area'], errors='coerce', downcast='integer')
     
+    ## Estacionamiento
+    df["estacionamiento_gp"] = df["estacionamientos"].apply(lambda x: "Si" if x > 0 else "No")
+    
+    
+
     return df
 
 # Cargamos los datos usando nuestra función cacheada
@@ -117,6 +114,8 @@ data = load_data("./data/data_alquiler_venta.csv")
 distritos = data["distrito_oficial"].unique()
 inmueble = data["inmueble"].unique()
 operacion = data["operacion"].unique()
+estacionamientos = data["estacionamiento_gp"].unique()
+
 
 ## ==================##
 ##    Funciones      ##
@@ -128,11 +127,11 @@ def display_kpis(df: pd.DataFrame, operation: str, distrito: str, inmueble: str)
     if operation == "alquiler":
         price_col = "precio_pen"
         symbol = "S/"
-        title = f"KPIs de precios Alquiler ({symbol}) en {distrito}"
+        title = f"KPIs de precios en Alquiler ({symbol}) en {distrito}"
     else:  # venta
         price_col = "precio_usd"
         symbol = "$"
-        title = f"KPIs de precios Venta ({symbol}) en {distrito}"
+        title = f"KPIs de precios en Venta ({symbol}) en {distrito}"
 
     df_kpi = df.copy()
     df_kpi[price_col] = pd.to_numeric(df_kpi[price_col], errors="coerce")
@@ -203,14 +202,14 @@ def display_details_table(df: pd.DataFrame, operation: str):
 
     if operation == "alquiler":
         price_col = "precio_pen"
-        cols_to_show = ["fuente", "direccion", "precio_pen", "area", "dormitorio", "baños", "estacionamientos", "mantenimiento", "caracteristica", "enlace"]
+        cols_to_show = ["enlace", "fuente", "direccion", "precio_pen", "area", "dormitorio", "baños", "estacionamientos", "mantenimiento", "caracteristica"]
         config.update({
             "precio_pen": st.column_config.NumberColumn("Precio (S/.)", format="S/. %d", disabled=True),
             "mantenimiento": st.column_config.NumberColumn("Mant. (S/.)", format="S/. %d", disabled=True),
         })
     else:  # venta
         price_col = "precio_usd"
-        cols_to_show = ["fuente", "direccion", "precio_usd", "area", "dormitorio", "baños", "estacionamientos", "caracteristica", "enlace"]
+        cols_to_show = ["enlace", "fuente", "direccion", "precio_usd", "area", "dormitorio", "baños", "estacionamientos", "caracteristica"]
         config.update({
             "precio_usd": st.column_config.NumberColumn("Precio ($)", format="$ %d", disabled=True),
         })
@@ -241,7 +240,7 @@ def create_map(df: pd.DataFrame):
 
     # Centro del mapa
     center_lat, center_lon = gdf['lat'].mean(), gdf['lon'].mean()
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles='OpenStreetMap')
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=15, tiles='OpenStreetMap')
     
     MiniMap(toggle_display=True).add_to(m)
     Fullscreen(position='topright').add_to(m)
@@ -284,7 +283,7 @@ def create_map(df: pd.DataFrame):
 ## ==================##
 ##      Pestañas     ##
 ## ==================##
-    
+
 tab1, tab2, tab3 = st.tabs(["🔎 Análisis Distrito", "📦 Alquiler", "📊 Venta"])
 
 
@@ -392,8 +391,9 @@ with tab1:
         with g1:
             # Gráfico 2: Número de Propiedades por Distrito (Bar Chart)
             st.markdown("##### Cantidad de Propiedades por Distrito")
-            prop_por_distrito = df_filtrado['distrito_oficial'].value_counts()
-            st.bar_chart(prop_por_distrito)
+            prop_por_distrito = df_filtrado['distrito_oficial'].value_counts().sort_values(ascending=True) 
+            prop_por_distrito_df = pd.DataFrame(prop_por_distrito)
+            st.bar_chart(prop_por_distrito_df, horizontal=True)
 
         with g2:
             # Gráfico 3: Precio Promedio por m² por Distrito (Bar Chart)
@@ -402,7 +402,7 @@ with tab1:
             if not df_plot.empty:
                 df_plot['precio_m2'] = round(df_plot[col_precio] / df_plot['area'],2)
                 precio_m2_distrito = df_plot.groupby('distrito_oficial')['precio_m2'].mean().round(2).sort_values(ascending=False)
-                st.bar_chart(precio_m2_distrito)
+                st.bar_chart(precio_m2_distrito, horizontal=True)
             else:
                 st.info("No hay datos de área o precio para calcular el precio por m².")
 
@@ -430,10 +430,10 @@ with tab1:
 
 with tab2:
     
-    st.subheader("Vista de Alquiler", divider="blue")
+    st.subheader("Propiedades en Alquiler", divider="blue")
+    st.write("Seleccione el Distrito de interes y el tipo de inmueble que desea ver")
     
     c1, c2 = st.columns([2, 2], gap="small")
-
     with c1:
         st.markdown("**Distrito**")
         input_distrito = st.selectbox(
@@ -467,7 +467,7 @@ with tab2:
     
     st.subheader(f"Lista de {input_inmueble} en Alquiler en {input_distrito}", divider="blue")
         
-    d1, d2 = st.columns([2, 2], gap="small")
+    d1, d2, d3, d4 = st.columns(4, gap="small")
     with d1:
         st.markdown("**Precio**")
         labels_alquiler_precio = ["Todos" ,"Hasta S/ 1000", "De S/ 1000 a S/ 2500", "De S/ 2500 a S/ 5000", "De S/ 5000 a S/ 10000", "De S/ 10000 a más"]
@@ -489,6 +489,28 @@ with tab2:
             
         )
         
+    with d3:
+        st.markdown("**Dormitorios**")       
+        labels_dorm = ["Todos", 1, 2, 3, 4, 5, 6]
+        input_dormitorio_alquiler = st.selectbox(
+            "seleccione el número de dormitorios:"
+            , options=labels_dorm
+            , key="dormitorio_alquiler" # <- Clave única para el widget
+            , index=0 
+            
+        )
+        
+    with d4:
+        st.markdown("**Estacionamiento**")       
+        labels_est = ["Todos", "Si", "No"]
+        input_estacionamiento_alquiler = st.selectbox(
+            "Le interesa es estacionamiento:"
+            , options=labels_est
+            , key="estacionamiento_alquiler" # <- Clave única para el widget
+            , index=0 
+            
+        )
+        
     # Se crea una copia del DataFrame filtrado por distrito para aplicar los filtros de rango.
     df_tabla_alquiler = df_filtrado_aquiler.copy()
 
@@ -499,6 +521,14 @@ with tab2:
     # Se aplica el filtro de rango de área si no es "Todos".
     if input_rango_area_alquiler != "Todos":
         df_tabla_alquiler = df_tabla_alquiler[df_tabla_alquiler["area_agp"] == input_rango_area_alquiler]
+    
+    # Se aplica el filtro de numero de habitaciones si no es "Todos".
+    if input_dormitorio_alquiler != "Todos":
+        df_tabla_alquiler = df_tabla_alquiler[df_tabla_alquiler["dormitorio"] == input_dormitorio_alquiler]
+        
+    # Se aplica el filtro de estacionamientos si no es "Todos".
+    if input_estacionamiento_alquiler != "Todos":
+        df_tabla_alquiler = df_tabla_alquiler[df_tabla_alquiler["estacionamiento_gp"] == input_estacionamiento_alquiler]
 
     # Usamos la función refactorizada para mostrar la tabla
     display_details_table(df_tabla_alquiler, "alquiler")
@@ -508,6 +538,8 @@ with tab2:
     ## ==============================##
     
     st.subheader(f"Mapa de {input_inmueble} en Alquiler en {input_distrito}", divider="blue")
+    
+    st.write(f"Cantidad de {input_inmueble} en Alquiler en {input_distrito} en Mapa Disponibles:", df_tabla_alquiler[df_tabla_alquiler["status"]=="geo"].shape[0])
     
     # Usamos la función refactorizada para crear el mapa
     create_map(df_filtrado_aquiler)
@@ -519,7 +551,7 @@ with tab2:
 
 with tab3:
     
-    st.subheader("Vista de Venta", divider="blue")
+    st.subheader("Propiedades en VENTA", divider="blue")
     
     c1, c2 = st.columns([2, 2], gap="small")
     with c1:
@@ -555,7 +587,7 @@ with tab3:
     
     st.subheader(f"Lista de {input_inmueble} en Venta en {input_distrito}", divider="blue")
     
-    e1, e2 = st.columns([2, 2], gap="small")
+    e1, e2, e3, e4 = st.columns(4, gap="small")
     with e1:
         st.markdown("**Precio**")
         # Se corrigen las etiquetas para que los rangos no se superpongan.
@@ -576,6 +608,28 @@ with tab3:
             , key="rango_area_venta"
         )
         
+    with e3:
+        st.markdown("**Dormitorios**")       
+        labels_dorm = ["Todos", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+        input_dormitorio_venta = st.selectbox(
+            "seleccione el número de dormitorios:"
+            , options=labels_dorm
+            , key="dormitorio_venta" # <- Clave única para el widget
+            , index=0 
+            
+        )
+        
+    with e4:
+        st.markdown("**Estacionamiento**")       
+        labels_est = ["Todos", "Si", "No"]
+        input_estacionamiento_venta = st.selectbox(
+            "Le interesa es estacionamiento:"
+            , options=labels_est
+            , key="estacionamiento_venta" # <- Clave única para el widget
+            , index=0 
+            
+        )    
+        
     # Se crea una copia del DataFrame filtrado por distrito para aplicar los filtros de rango.
     df_tabla_venta = df_filtrado_venta.copy()
 
@@ -586,7 +640,14 @@ with tab3:
     # Se aplica el filtro de rango de área si no es "Todos".
     if input_rango_area_venta != "Todos":
         df_tabla_venta = df_tabla_venta[df_tabla_venta["area_agp"] == input_rango_area_venta]
-
+        
+    # Se aplica el filtro de numero de habitaciones si no es "Todos".
+    if input_dormitorio_venta != "Todos":
+        df_tabla_venta = df_tabla_venta[df_tabla_venta["dormitorio"] == input_dormitorio_venta]
+        
+    # Se aplica el filtro de estacionamientos si no es "Todos".
+    if input_estacionamiento_venta != "Todos":
+        df_tabla_venta = df_tabla_venta[df_tabla_venta["estacionamiento_gp"] == input_estacionamiento_venta]
     
     # Usamos la función refactorizada para mostrar la tabla
     display_details_table(df_tabla_venta, "venta")
@@ -596,6 +657,8 @@ with tab3:
     ## ===========================##
     
     st.subheader(f"Mapa de {input_inmueble} en Venta en {input_distrito}", divider="blue")
+    
+    st.write(f"Cantidad de {input_inmueble} en Venta en {input_distrito} en Mapa Disponibles:", df_tabla_venta[df_tabla_venta["status"]=="geo"].shape[0])
     
     # Usamos la función refactorizada para crear el mapa
     create_map(df_filtrado_venta)
