@@ -4,4 +4,3 @@ numpy
 streamlit-folium
 folium
 plotly
-base64
