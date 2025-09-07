@@ -12,13 +12,40 @@ import folium
 from folium.plugins import MarkerCluster, MiniMap, Fullscreen, MeasureControl, LocateControl
 from urllib.parse import quote
 import plotly.express as px
+import base64
 
 
 st.set_page_config(layout="wide")
-st.image(".img/rent_apartment_flat_illustration_set.jpg", use_container_width=True)
+
+IMG_PATH = Path(r"C:\Users\PC\Desktop\Proyectos\Proyectos_Py\6.Analisis_Alquiler_Venta\vivienda\vivienda\img\calles.png")
+
+# Convertir a base64 para embeberla en el HTML (funciona igual en deploy)
+def get_base64(path):
+    with open(path, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+img_base64 = get_base64(IMG_PATH)
+
+# HTML + CSS responsivo
+st.markdown(
+    f"""
+    <div class="banner"></div>
+    <style>
+        .banner {{
+            width: 100%;
+            height: 220px;  /* Ajusta la altura a tu gusto */
+            background-image: url("data:image/png;base64,{img_base64}");
+            background-size: cover;   /* Se adapta al ancho */
+            background-position: center; /* Centrado */
+            border-radius: 10px; /* opcional: esquinas redondeadas */
+        }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 ## Titulo
-# st.image("sunrise.jpg", caption="Sunrise by the mountains")
 st.set_page_config(layout="wide")
 st.title("Análisis Inmobiliario 🏡📊")
 
@@ -26,6 +53,7 @@ st.title("Análisis Inmobiliario 🏡📊")
 Bienvenido a la plataforma interactiva de análisis inmobiliario de Lima.  
 
 Aquí podrás explorar **departamentos, casas y terrenos** en venta y alquiler, con datos reales y actualizados. 
+Esta es una herramienta diseñada para ayudarte a entender **cómo se mueve el mercado inmobiliario en Lima**, detectar oportunidades y tomar mejores decisiones.  
 
 Las fuentes que se usaron para recopilar esta información al 19 de agosto de 2025 fueron: 
 - 🏡 [Urbania](https://urbania.pe)
@@ -34,11 +62,10 @@ Las fuentes que se usaron para recopilar esta información al 19 de agosto de 20
 La aplicación te permite:
 
 - 📍 Visualizar la distribución geográfica de las propiedades en los distintos distritos.  
-- 💰 Comparar precios en **soles** y **dólares**, con métricas como precio por m² y variación.  
+- 💰 Comparar precios en **soles** (alquiler) y **dólares** (venta), con métricas como precio por m² y variación.  
 - 📐 Filtrar fácilmente por área, dormitorios, baños, estacionamientos y mantenimiento.  
 - 🔗 Acceder directamente al anuncio original de cada propiedad.  
 
-En pocas palabras: una herramienta diseñada para ayudarte a entender **cómo se mueve el mercado inmobiliario en Lima**, detectar oportunidades y tomar mejores decisiones.  
 """
 
 ## ==================##
