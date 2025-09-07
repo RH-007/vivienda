@@ -19,7 +19,7 @@ st.set_page_config(layout="wide")
 # Custom HTML/CSS for the banner
 custom_html = """
 <div class="banner">
-    <img src="./img/rent apartment flat illustration set.jpg" alt="Banner Image">
+    <img src="https://www.freepik.es/vector-gratis/personas-que-buscan-eligen-apartamento-alquilar-linea-firman-contrato-arrendamiento-conjunto-plano-ilustracion-vectorial-aislada_72084608.htm#fromView=search&page=1&position=0&uuid=ab909833-0423-428c-8c2b-18af4a1a0972&query=analisis+inmobilidario" alt="Banner Image">
 </div>
 <style>
     .banner {
