@@ -12,39 +12,9 @@ import folium
 from folium.plugins import MarkerCluster, MiniMap, Fullscreen, MeasureControl, LocateControl
 from urllib.parse import quote
 import plotly.express as px
-import base64
 
 
 st.set_page_config(layout="wide")
-
-IMG_PATH = Path(".img\calles.png")
-
-# Convertir a base64 para embeberla en el HTML (funciona igual en deploy)
-def get_base64(path):
-    with open(path, "rb") as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
-
-img_base64 = get_base64(IMG_PATH)
-
-# HTML + CSS responsivo
-st.markdown(
-    f"""
-    <div class="banner"></div>
-    <style>
-        .banner {{
-            width: 100%;
-            height: 220px;  /* Ajusta la altura a tu gusto */
-            background-image: url("data:image/png;base64,{img_base64}");
-            background-size: cover;   /* Se adapta al ancho */
-            background-position: center; /* Centrado */
-            border-radius: 10px; /* opcional: esquinas redondeadas */
-        }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 ## Titulo
 st.set_page_config(layout="wide")
 st.title("Análisis Inmobiliario 🏡📊")
